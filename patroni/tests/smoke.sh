@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 echo "debian $(cat /etc/debian_version), $(postgres --version), patroni $(patroni --version | awk '{print $2}')"

@@ -21,7 +21,11 @@ on:
         type: string
         default: linux/amd64,linux/arm64
       upstream-env:
-        description: Image env var holding the upstream version; tags become <upstream>-<n>. Empty uses <context>/VERSION.
+        description: Image env var holding the upstream version; tags become <upstream>-<n>
+        type: string
+        default: ""
+      upstream-cmd:
+        description: Shell command run in the image that prints the upstream version, instead of upstream-env. Neither set uses <context>/VERSION.
         type: string
         default: ""
       latest:
@@ -68,7 +72,7 @@ jobs:
         CONTEXT: ${{ inputs.context }}
       run: |
         if [ -f "$CONTEXT/tests/smoke.sh" ]; then
-          docker run --rm -v "$PWD/$CONTEXT/tests/smoke.sh:/smoke.sh:ro" --entrypoint bash "$LOCAL_IMAGE" /smoke.sh
+          docker run --rm -v "$PWD/$CONTEXT/tests/smoke.sh:/smoke.sh:ro" --entrypoint /smoke.sh "$LOCAL_IMAGE"
         else
           echo "No $CONTEXT/tests/smoke.sh, skipping"
         fi
@@ -77,6 +81,7 @@ jobs:
       env:
         CONTEXT: ${{ inputs.context }}
         UPSTREAM_ENV: ${{ inputs.upstream-env }}
+        UPSTREAM_CMD: ${{ inputs.upstream-cmd }}
         TARGET: ${{ inputs.target }}
         BUILD_ARGS: ${{ inputs.build-args }}
         PLATFORMS: ${{ inputs.platforms }}

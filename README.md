@@ -7,6 +7,7 @@ Container images for the homelab, published to `ghcr.io/wahooli/docker/<image>`.
 | `patroni-17` | `patroni/` (target `patroni`) | `<patroni>-<n>` | Patroni from PyPI, 4.0.x |
 | `patroni-17-vchord` | `patroni/` (target `vchord`) | `<patroni>-<n>` | Patroni from PyPI, 4.0.x |
 | `haproxy-redis` | `haproxy-redis/` | `<haproxy>-<n>` | `haproxy` on Docker Hub, 3.2.x |
+| `unfs3` | `unfs3/` | `<unfs3>-<n>`, `latest` | the Alpine package, via weekly rebuilds |
 | `wait-for-it` | `wait-for-it/` | `VERSION`, `latest` | none |
 | `envsubst` | `envsubst/` | `VERSION`, `latest` | none |
 
@@ -14,7 +15,8 @@ Container images for the homelab, published to `ghcr.io/wahooli/docker/<image>`.
 
 **Upstream-tracked images** are tagged `<upstream>-<n>`, for example
 `haproxy-redis:3.2.25-1`. The upstream version comes from an env var in the
-built image (`PATRONI_VERSION`, `HAPROXY_VERSION`). `n` starts at 1 for each
+built image (`PATRONI_VERSION`, `HAPROXY_VERSION`), or from a command run in
+the image (`unfsd -h` for unfs3). `n` starts at 1 for each
 upstream version and goes up whenever the image contents change without an
 upstream bump: a Postgres minor, a Debian security update, a script change.
 
@@ -30,12 +32,13 @@ when that tag doesn't exist yet; to release a change, bump `VERSION`.
 ## Workflows
 
 - `<image>.yaml`: builds on pull requests (no push), on pushes to `main`, and
-  by hand. Each run builds amd64, runs `<dir>/tests/smoke.sh` inside the
-  image, plans the tag, and on `main` pushes amd64 and arm64. Upstream-tracked
-  images also run on a schedule to pick up base-image updates: haproxy-redis
-  weekly, patroni monthly (each rebuild of a Patroni image restarts the
-  database pods once Flux rolls it out). `force` publishes a new `<n>` even if
-  nothing changed (own-versioned images: overwrites `VERSION`).
+  by hand. Each run builds amd64, runs `<dir>/tests/smoke.sh` inside the image
+  through its shebang, plans the tag, and on `main` pushes amd64 and arm64.
+  Upstream-tracked images also run on a schedule to pick up base-image
+  updates: haproxy-redis and unfs3 weekly, patroni monthly (each rebuild of a
+  Patroni image restarts the database pods once Flux rolls it out). `force`
+  publishes a new `<n>` even if nothing changed (own-versioned images:
+  overwrites `VERSION`).
 - `build-image.yaml`: the reusable workflow behind all of the above.
 - `track-upstream.yaml`: runs daily. For each tracked image it looks up the
   newest upstream release in the current `MAJOR.MINOR` line, bumps the pinned
@@ -77,12 +80,18 @@ nothing rolls out until a policy is switched.
   both `VCHORD_SHA256_*` after checking Immich's supported range; the extension
   may need `ALTER EXTENSION vchord UPDATE` after the rollout.
 
+- `unfs3` is based on [nimbix/docker-unfs3](https://github.com/nimbix/docker-unfs3)
+  and [mitcdh/docker-unfs3](https://github.com/mitcdh/docker-unfs3). The unfs3
+  version is whatever Alpine packages for the pinned Alpine minor
+  (`ALPINE_IMAGE`); moving to a newer Alpine minor is a manual bump.
+
 ## Adding an image
 
-1. Create `<image>/Dockerfile`, and `<image>/tests/smoke.sh` (run with `bash`
-   inside the image as its default user).
-2. Either add `<image>/VERSION`, or have the image set an env var with the
-   upstream version and pass it as `upstream-env`.
+1. Create `<image>/Dockerfile`, and an executable `<image>/tests/smoke.sh`.
+   It runs inside the image as its default user, through its shebang, so use
+   `#!/bin/sh` on images without bash.
+2. Either add `<image>/VERSION`, or get the upstream version from an env var
+   in the image (`upstream-env`) or a command run in it (`upstream-cmd`).
 3. Copy one of the `<image>.yaml` workflows and adjust the paths and inputs.
 4. For upstream tracking, pin the version as an `ARG X=1.2.3` in the
    Dockerfile and add an entry to the `track-upstream.yaml` matrix (`pypi:` or
@@ -93,7 +102,7 @@ nothing rolls out until a policy is switched.
 ```bash
 docker buildx build --load -t local/haproxy-redis:ci haproxy-redis
 docker run --rm -v "$PWD/haproxy-redis/tests/smoke.sh:/smoke.sh:ro" \
-  --entrypoint bash local/haproxy-redis:ci /smoke.sh
+  --entrypoint /smoke.sh local/haproxy-redis:ci
 IMAGE_REF=ghcr.io/wahooli/docker/haproxy-redis LOCAL_IMAGE=local/haproxy-redis:ci \
   CONTEXT=haproxy-redis UPSTREAM_ENV=HAPROXY_VERSION PLATFORMS=linux/amd64,linux/arm64 \
   .github/scripts/plan-release.sh

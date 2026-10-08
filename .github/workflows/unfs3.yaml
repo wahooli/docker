@@ -1,0 +1,38 @@
+name: unfs3
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - unfs3/**
+    - .github/workflows/unfs3.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  pull_request:
+    paths:
+    - unfs3/**
+    - .github/workflows/unfs3.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  schedule:
+  - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a new tag even if nothing changed
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: unfs3
+      context: unfs3
+      upstream-cmd: unfsd -h 2>&1 | sed -n 's/^UNFS3 unfsd \([0-9.]*\) .*/\1/p'
+      latest: true
+      force: ${{ inputs.force == true }}

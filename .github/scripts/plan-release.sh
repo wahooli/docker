@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${IMAGE_REF:?}" "${LOCAL_IMAGE:?}" "${CONTEXT:?}"
 UPSTREAM_ENV="${UPSTREAM_ENV:-}"
+UPSTREAM_CMD="${UPSTREAM_CMD:-}"
 TARGET="${TARGET:-}"
 BUILD_ARGS="${BUILD_ARGS:-}"
 PLATFORMS="${PLATFORMS:-}"
@@ -80,11 +81,17 @@ upstream=""
 reason=""
 push=true
 
-if [ -n "$UPSTREAM_ENV" ]; then
-  upstream="$(docker image inspect "$LOCAL_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' |
-    sed -n "s/^${UPSTREAM_ENV}=//p")"
+if [ -n "$UPSTREAM_ENV" ] || [ -n "$UPSTREAM_CMD" ]; then
+  if [ -n "$UPSTREAM_ENV" ]; then
+    source_desc="$UPSTREAM_ENV"
+    upstream="$(docker image inspect "$LOCAL_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' |
+      sed -n "s/^${UPSTREAM_ENV}=//p")"
+  else
+    source_desc="'$UPSTREAM_CMD'"
+    upstream="$(docker run --rm --entrypoint sh "$LOCAL_IMAGE" -c "$UPSTREAM_CMD")"
+  fi
   if ! [[ "$upstream" =~ $semver ]]; then
-    echo "::error::$UPSTREAM_ENV in $LOCAL_IMAGE is '$upstream', expected X.Y.Z" >&2
+    echo "::error::upstream version from $source_desc in $LOCAL_IMAGE is '$upstream', expected X.Y.Z" >&2
     exit 1
   fi
   last="$(list_tags "$IMAGE_REF" | sed -n "s/^${upstream//./\\.}-\([0-9][0-9]*\)$/\1/p" | sort -n | tail -n 1)"
