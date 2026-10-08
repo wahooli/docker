@@ -1,0 +1,49 @@
+name: patroni
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - patroni/**
+    - .github/workflows/patroni.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  pull_request:
+    paths:
+    - patroni/**
+    - .github/workflows/patroni.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  schedule:
+  - cron: "17 3 1 * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a new tag even if nothing changed
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - image: patroni-17
+          target: patroni
+          build-args: DEBIAN_RELEASE=bookworm
+        - image: patroni-17-vchord
+          target: vchord
+          build-args: DEBIAN_RELEASE=trixie
+    uses: ./.github/workflows/build-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: ${{ matrix.image }}
+      context: patroni
+      target: ${{ matrix.target }}
+      build-args: ${{ matrix.build-args }}
+      upstream-env: PATRONI_VERSION
+      force: ${{ inputs.force == true }}

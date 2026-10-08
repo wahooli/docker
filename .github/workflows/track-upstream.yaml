@@ -1,0 +1,54 @@
+name: track-upstream
+
+on:
+  schedule:
+  - cron: "41 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  track:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+        - name: patroni
+          dockerfile: patroni/Dockerfile
+          arg: PATRONI_VERSION
+          source: pypi:patroni
+          workflow: patroni.yaml
+        - name: haproxy
+          dockerfile: haproxy-redis/Dockerfile
+          arg: HAPROXY_VERSION
+          source: docker:docker.io/library/haproxy
+          workflow: haproxy-redis.yaml
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: main
+    - name: Check upstream
+      id: track
+      env:
+        DOCKERFILE: ${{ matrix.dockerfile }}
+        ARG_NAME: ${{ matrix.arg }}
+        SOURCE: ${{ matrix.source }}
+      run: .github/scripts/track-upstream.sh
+    - name: Commit and build
+      if: steps.track.outputs.updated == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        DOCKERFILE: ${{ matrix.dockerfile }}
+        WORKFLOW: ${{ matrix.workflow }}
+        MESSAGE: "${{ matrix.name }}: ${{ steps.track.outputs.current }} -> ${{ steps.track.outputs.latest }}"
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -m "$MESSAGE" -- "$DOCKERFILE"
+        git pull --rebase origin main
+        git push origin HEAD:main
+        gh workflow run "$WORKFLOW" --ref main

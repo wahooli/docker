@@ -1,0 +1,121 @@
+name: build-image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image name under ghcr.io/<owner>/docker/
+        type: string
+        required: true
+      context:
+        description: Build context directory
+        type: string
+        required: true
+      target:
+        type: string
+        default: ""
+      build-args:
+        type: string
+        default: ""
+      platforms:
+        type: string
+        default: linux/amd64,linux/arm64
+      upstream-env:
+        description: Image env var holding the upstream version; tags become <upstream>-<n>. Empty uses <context>/VERSION.
+        type: string
+        default: ""
+      latest:
+        description: Also tag the published image as latest
+        type: boolean
+        default: false
+      force:
+        description: Publish even if nothing changed
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: ${{ inputs.image }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: build-${{ inputs.image }}
+      cancel-in-progress: false
+    env:
+      IMAGE_REF: ghcr.io/${{ github.repository_owner }}/docker/${{ inputs.image }}
+      LOCAL_IMAGE: local/${{ inputs.image }}:ci
+      CAN_PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/setup-qemu-action@v3
+    - uses: docker/setup-buildx-action@v3
+    - uses: docker/login-action@v3
+      if: env.CAN_PUSH == 'true'
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build for smoke test
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build-args }}
+        platforms: linux/amd64
+        load: true
+        tags: ${{ env.LOCAL_IMAGE }}
+    - name: Smoke test
+      env:
+        CONTEXT: ${{ inputs.context }}
+      run: |
+        if [ -f "$CONTEXT/tests/smoke.sh" ]; then
+          docker run --rm -v "$PWD/$CONTEXT/tests/smoke.sh:/smoke.sh:ro" --entrypoint bash "$LOCAL_IMAGE" /smoke.sh
+        else
+          echo "No $CONTEXT/tests/smoke.sh, skipping"
+        fi
+    - name: Plan release
+      id: plan
+      env:
+        CONTEXT: ${{ inputs.context }}
+        UPSTREAM_ENV: ${{ inputs.upstream-env }}
+        TARGET: ${{ inputs.target }}
+        BUILD_ARGS: ${{ inputs.build-args }}
+        PLATFORMS: ${{ inputs.platforms }}
+        FORCE: ${{ inputs.force }}
+      run: .github/scripts/plan-release.sh
+    - name: Build and push
+      if: steps.plan.outputs.push == 'true'
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build-args }}
+        platforms: ${{ inputs.platforms }}
+        push: true
+        tags: |
+          ${{ env.IMAGE_REF }}:${{ steps.plan.outputs.tag }}
+          ${{ inputs.latest && format('{0}:latest', env.IMAGE_REF) || '' }}
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.version=${{ steps.plan.outputs.tag }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          li.wahoo.image.fingerprint=${{ steps.plan.outputs.fingerprint }}
+          li.wahoo.image.upstream=${{ steps.plan.outputs.upstream }}
+    - name: Summary
+      if: steps.plan.outputs.tag != ''
+      env:
+        TAG: ${{ steps.plan.outputs.tag }}
+        PUSHED: ${{ steps.plan.outputs.push }}
+        REASON: ${{ steps.plan.outputs.reason }}
+        UPSTREAM: ${{ steps.plan.outputs.upstream }}
+      run: |
+        {
+          echo "### $IMAGE_REF:$TAG"
+          echo
+          echo "| | |"
+          echo "|---|---|"
+          echo "| Published | $PUSHED |"
+          echo "| Reason | $REASON |"
+          if [ -n "$UPSTREAM" ]; then
+            echo "| Upstream | $UPSTREAM |"
+          fi
+        } >>"$GITHUB_STEP_SUMMARY"

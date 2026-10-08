@@ -1,0 +1,35 @@
+name: envsubst
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - envsubst/**
+    - .github/workflows/envsubst.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  pull_request:
+    paths:
+    - envsubst/**
+    - .github/workflows/envsubst.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Overwrite the tag in VERSION if it already exists
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: envsubst
+      context: envsubst
+      latest: true
+      force: ${{ inputs.force == true }}
