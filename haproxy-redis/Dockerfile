@@ -1,4 +1,4 @@
-ARG HAPROXY_VERSION=3.2.25
+ARG HAPROXY_VERSION=3.2.26
 FROM haproxy:$HAPROXY_VERSION
 
 # Switch to the root user to be able to install packages
