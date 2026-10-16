@@ -8,6 +8,7 @@ Container images for the homelab, published to `ghcr.io/wahooli/docker/<image>`.
 | `patroni-17-vchord` | `patroni/` (target `vchord`) | `<patroni>-<n>` | Patroni from PyPI, 4.0.x |
 | `haproxy-redis` | `haproxy-redis/` | `<haproxy>-<n>` | `haproxy` on Docker Hub, 3.2.x |
 | `unfs3` | `unfs3/` | `<unfs3>-<n>`, `latest` | the Alpine package, via weekly rebuilds |
+| `openvpn` | `openvpn/` | `<openvpn>-<n>` | the Alpine package, via weekly rebuilds |
 | `wait-for-it` | `wait-for-it/` | `VERSION`, `latest` | none |
 | `envsubst` | `envsubst/` | `VERSION`, `latest` | none |
 
@@ -16,7 +17,7 @@ Container images for the homelab, published to `ghcr.io/wahooli/docker/<image>`.
 **Upstream-tracked images** are tagged `<upstream>-<n>`, for example
 `haproxy-redis:3.2.25-1`. The upstream version comes from an env var in the
 built image (`PATRONI_VERSION`, `HAPROXY_VERSION`), or from a command run in
-the image (`unfsd -h` for unfs3). `n` starts at 1 for each
+the image (`unfsd -h` for unfs3, `openvpn --version` for openvpn). `n` starts at 1 for each
 upstream version and goes up whenever the image contents change without an
 upstream bump: a Postgres minor, a Debian security update, a script change.
 
@@ -84,6 +85,11 @@ nothing rolls out until a policy is switched.
   and [mitcdh/docker-unfs3](https://github.com/mitcdh/docker-unfs3). The unfs3
   version is whatever Alpine packages for the pinned Alpine minor
   (`ALPINE_IMAGE`); moving to a newer Alpine minor is a manual bump.
+- `openvpn` bundles OpenVPN, iptables, dnsmasq and HAProxy from Alpine, so one
+  image serves every container of the tenant VPN pod in gitops-repo. The
+  entrypoint creates `/dev/net/tun` when it's missing (needs `MKNOD`) and runs
+  each `/docker-entrypoint.d/*.sh` before exec'ing the command. Like unfs3, the
+  package versions follow the pinned Alpine minor.
 
 ## Adding an image
 

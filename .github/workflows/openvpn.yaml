@@ -1,0 +1,37 @@
+name: openvpn
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - openvpn/**
+    - .github/workflows/openvpn.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  pull_request:
+    paths:
+    - openvpn/**
+    - .github/workflows/openvpn.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  schedule:
+  - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a new tag even if nothing changed
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: openvpn
+      context: openvpn
+      upstream-cmd: openvpn --version | sed -n '1s/^OpenVPN \([0-9.]*\) .*/\1/p'
+      force: ${{ inputs.force == true }}
