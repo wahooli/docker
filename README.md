@@ -9,6 +9,7 @@ Container images for the homelab, published to `ghcr.io/wahooli/docker/<image>`.
 | `haproxy-redis` | `haproxy-redis/` | `<haproxy>-<n>` | `haproxy` on Docker Hub, 3.2.x |
 | `unfs3` | `unfs3/` | `<unfs3>-<n>`, `latest` | the Alpine package, via weekly rebuilds |
 | `openvpn` | `openvpn/` | `<openvpn>-<n>` | the Alpine package, via weekly rebuilds |
+| `exportarr` | `exportarr/` | `<exportarr>-<n>` | none, pinned to 2.3.0 |
 | `wait-for-it` | `wait-for-it/` | `VERSION`, `latest` | none |
 | `envsubst` | `envsubst/` | `VERSION`, `latest` | none |
 
@@ -85,6 +86,12 @@ nothing rolls out until a policy is switched.
   and [mitcdh/docker-unfs3](https://github.com/mitcdh/docker-unfs3). The unfs3
   version is whatever Alpine packages for the pinned Alpine minor
   (`ALPINE_IMAGE`); moving to a newer Alpine minor is a manual bump.
+- `exportarr` is [onedr0p/exportarr](https://github.com/onedr0p/exportarr)
+  v2.3.0 with `queue-counts.patch`. Every v2 release reports `*_queue_total`
+  as a single series: the total queue size, labelled with the last item's
+  state. The patch counts items per state, the same way upstream `main` does
+  since the unreleased v3 rewrite, and adds a test that the build runs. Drop
+  the image once upstream publishes v3.
 - `openvpn` bundles OpenVPN, iptables, dnsmasq and HAProxy from Alpine, so one
   image serves every container of the tenant VPN pod in gitops-repo. The
   entrypoint creates `/dev/net/tun` when it's missing (needs `MKNOD`) and runs

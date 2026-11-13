@@ -1,0 +1,35 @@
+name: exportarr
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - exportarr/**
+    - .github/workflows/exportarr.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  pull_request:
+    paths:
+    - exportarr/**
+    - .github/workflows/exportarr.yaml
+    - .github/workflows/build-image.yaml
+    - .github/scripts/plan-release.sh
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a new tag even if nothing changed
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: exportarr
+      context: exportarr
+      upstream-env: EXPORTARR_VERSION
+      force: ${{ inputs.force == true }}
