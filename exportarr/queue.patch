@@ -1,0 +1,119 @@
+--- a/internal/arr/collector/queue_counts_test.go
++++ b/internal/arr/collector/queue_counts_test.go
+@@ -0,0 +1,37 @@
++package collector
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/onedr0p/exportarr/internal/arr/config"
++	"github.com/onedr0p/exportarr/internal/test_util"
++	"github.com/prometheus/client_golang/prometheus/testutil"
++	"github.com/stretchr/testify/require"
++)
++
++func TestQueueCollect_CountsAndItems(t *testing.T) {
++	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"page":1,"pageSize":10,"totalRecords":3,"records":[
++			{"id":1,"title":"A","sizeleft":0,"status":"completed","trackedDownloadStatus":"warning","trackedDownloadState":"importBlocked"},
++			{"id":2,"title":"B","sizeleft":1024,"status":"downloading","trackedDownloadStatus":"ok","trackedDownloadState":"downloading"},
++			{"id":3,"title":"A","sizeleft":0,"status":"completed","trackedDownloadStatus":"warning","trackedDownloadState":"importBlocked"}]}`))
++	}))
++	defer ts.Close()
++
++	collector := NewQueueCollector(&config.ArrConfig{App: "sonarr", ApiVersion: "v3", URL: ts.URL, ApiKey: test_util.API_KEY})
++	expected := strings.ReplaceAll(`# HELP sonarr_queue_total Total number of items in the queue by status, download_status, and download_state
++# TYPE sonarr_queue_total gauge
++sonarr_queue_total{download_state="downloading",download_status="ok",status="downloading",url="URL"} 1
++sonarr_queue_total{download_state="importBlocked",download_status="warning",status="completed",url="URL"} 2
++# HELP sonarr_queue_item_size_left_bytes Bytes left to download for each queue item
++# TYPE sonarr_queue_item_size_left_bytes gauge
++sonarr_queue_item_size_left_bytes{download_state="importBlocked",download_status="warning",id="1",status="completed",title="A",url="URL"} 0
++sonarr_queue_item_size_left_bytes{download_state="downloading",download_status="ok",id="2",status="downloading",title="B",url="URL"} 1024
++sonarr_queue_item_size_left_bytes{download_state="importBlocked",download_status="warning",id="3",status="completed",title="A",url="URL"} 0
++`, "URL", ts.URL)
++	require.NoError(t, testutil.CollectAndCompare(collector, strings.NewReader(expected)))
++}
+--- a/internal/arr/collector/queue.go
++++ b/internal/arr/collector/queue.go
+@@ -13,6 +13,7 @@
+ type queueCollector struct {
+ 	config      *config.ArrConfig // App configuration
+ 	queueMetric *prometheus.Desc  // Total number of queue items
++	itemMetric  *prometheus.Desc  // Bytes left per queue item
+ 	errorMetric *prometheus.Desc  // Error Description for use with InvalidMetric
+ }
+ 
+@@ -25,6 +26,12 @@
+ 			[]string{"status", "download_status", "download_state"},
+ 			prometheus.Labels{"url": c.URL},
+ 		),
++		itemMetric: prometheus.NewDesc(
++			fmt.Sprintf("%s_queue_item_size_left_bytes", c.App),
++			"Bytes left to download for each queue item",
++			[]string{"id", "title", "status", "download_status", "download_state"},
++			prometheus.Labels{"url": c.URL},
++		),
+ 		errorMetric: prometheus.NewDesc(
+ 			fmt.Sprintf("%s_queue_collector_error", c.App),
+ 			"Error while collecting metrics",
+@@ -36,6 +43,7 @@
+ 
+ func (collector *queueCollector) Describe(ch chan<- *prometheus.Desc) {
+ 	ch <- collector.queueMetric
++	ch <- collector.itemMetric
+ }
+ 
+ func (collector *queueCollector) Collect(ch chan<- prometheus.Metric) {
+@@ -85,13 +93,16 @@
+ 		}
+ 	}
+ 	// Group metrics by status, download_status and download_state
+-	if len(queueStatusAll) > 0 {
+-		var queueMetrics prometheus.Metric
+-		for i, s := range queueStatusAll {
+-			queueMetrics = prometheus.MustNewConstMetric(collector.queueMetric, prometheus.GaugeValue, float64(i+1),
+-				s.Status, s.TrackedDownloadStatus, s.TrackedDownloadState,
+-			)
+-		}
+-		ch <- queueMetrics
++	counts := map[[3]string]int{}
++	for _, s := range queueStatusAll {
++		counts[[3]string{s.Status, s.TrackedDownloadStatus, s.TrackedDownloadState}]++
++		ch <- prometheus.MustNewConstMetric(collector.itemMetric, prometheus.GaugeValue, s.Sizeleft,
++			fmt.Sprint(s.ID), s.Title, s.Status, s.TrackedDownloadStatus, s.TrackedDownloadState,
++		)
++	}
++	for labels, count := range counts {
++		ch <- prometheus.MustNewConstMetric(collector.queueMetric, prometheus.GaugeValue, float64(count),
++			labels[0], labels[1], labels[2],
++		)
+ 	}
+ }
+--- a/internal/arr/collector/queue_test.go
++++ b/internal/arr/collector/queue_test.go
+@@ -77,7 +77,7 @@
+ 			f := strings.NewReader(expected)
+ 
+ 			require.NotPanics(func() {
+-				err = testutil.CollectAndCompare(collector, f)
++				err = testutil.CollectAndCompare(collector, f, tt.config.App+"_queue_total")
+ 			})
+ 			require.NoError(err)
+ 		})
+--- a/internal/arr/model/shared.go
++++ b/internal/arr/model/shared.go
+@@ -25,7 +25,9 @@
+ 
+ // QueueRecords - Stores struct of JSON response
+ type QueueRecords struct {
++	ID                    int     `json:"id"`
+ 	Size                  float64 `json:"size"`
++	Sizeleft              float64 `json:"sizeleft"`
+ 	Title                 string  `json:"title"`
+ 	Status                string  `json:"status"`
+ 	TrackedDownloadStatus string  `json:"trackedDownloadStatus"`

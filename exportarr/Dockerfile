@@ -8,8 +8,8 @@ ARG TARGETARCH
 RUN apk add --no-cache git
 RUN git clone --depth 1 --branch v$EXPORTARR_VERSION https://github.com/onedr0p/exportarr /build
 WORKDIR /build
-COPY queue-counts.patch /tmp/
-RUN git apply /tmp/queue-counts.patch \
+COPY queue.patch /tmp/
+RUN git apply /tmp/queue.patch \
     && go test ./internal/arr/collector/ -run TestQueue
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w" -o /exportarr ./cmd/exportarr

@@ -87,11 +87,14 @@ nothing rolls out until a policy is switched.
   version is whatever Alpine packages for the pinned Alpine minor
   (`ALPINE_IMAGE`); moving to a newer Alpine minor is a manual bump.
 - `exportarr` is [onedr0p/exportarr](https://github.com/onedr0p/exportarr)
-  v2.3.0 with `queue-counts.patch`. Every v2 release reports `*_queue_total`
+  v2.3.0 with `queue.patch`. Every v2 release reports `*_queue_total`
   as a single series: the total queue size, labelled with the last item's
   state. The patch counts items per state, the same way upstream `main` does
-  since the unreleased v3 rewrite, and adds a test that the build runs. Drop
-  the image once upstream publishes v3.
+  since the unreleased v3 rewrite. It also adds
+  `*_queue_item_size_left_bytes{id,title,status,download_status,download_state}`,
+  one series per queue item, which gitops-repo uses for per-title alerts. The
+  build runs the collector tests, including the patch's own. Upstream v3 has no
+  per-item metric, so moving to it means dropping or porting that part.
 - `openvpn` bundles OpenVPN, iptables, dnsmasq and HAProxy from Alpine, so one
   image serves every container of the tenant VPN pod in gitops-repo. The
   entrypoint creates `/dev/net/tun` when it's missing (needs `MKNOD`) and runs
